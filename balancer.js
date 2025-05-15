@@ -1,6 +1,5 @@
-// Используем глобальные объекты вместо импортов
-const PIXI = window.PIXI;
-const gsap = window.gsap;
+// Используем глобальные объекты
+const { PIXI, gsap } = window;
 
 class MemoryProfiler {
     constructor() {
