@@ -1,6 +1,4 @@
-// Используем глобальные объекты
-const { PIXI, gsap } = window;
-
+// Классы для работы с балансером
 class MemoryProfiler {
     constructor() {
         this.measurements = [];
