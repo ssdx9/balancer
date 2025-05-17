@@ -58,6 +58,9 @@ class BuoyancySimulation {
         this.profiler = new MemoryProfiler();
         this.showMemoryReport = false; // Отключаем отчет о памяти
         this.isDemoMode = false; // Отключаем демо-режим
+        this.isCtrlPressed = false;
+        this.selectedNodes = new Set();
+        this.aspects = new Map(); // Map для хранения аспектов
         
         this.app = new PIXI.Application({
             width: window.innerWidth,
@@ -425,7 +428,18 @@ class BuoyancySimulation {
                     const angle = this.nodeAngles.get(node);
                     const distance = this.nodeDistances.get(node);
 
-                    if (!this.isDragging || node !== this.draggedNode) {
+                    // Проверяем, не является ли узел частью анимирующегося аспекта
+                    let isAnimating = false;
+                    for (const aspect of this.aspects.values()) {
+                        if (aspect.isAnimating && aspect.nodes.includes(node)) {
+                            isAnimating = true;
+                            break;
+                        }
+                    }
+
+                    if (!isAnimating && (!this.isDragging || node !== this.draggedNode)) {
+                        // Применяем физику только если узел не является частью аспекта
+                        if (!node.isAspectNode) {
                         const idealY = center.y - node.coef * 18;
                         const forceY = (idealY - node.y) * 0.09;
                         node.vy += forceY;
@@ -437,6 +451,7 @@ class BuoyancySimulation {
                         node.vx += forceX;
                         node.vx *= 0.85;
                         node.x += node.vx;
+                        }
 
                         const dxToCenter = node.x - center.x;
                         const dyToCenter = node.y - center.y;
@@ -533,10 +548,38 @@ class BuoyancySimulation {
         this.app.stage.eventMode = 'static';
         this.app.stage.hitArea = this.app.screen;
         
+        // Добавляем обработчики для Ctrl
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Control') {
+                this.isCtrlPressed = true;
+            }
+        });
+        
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'Control') {
+                this.isCtrlPressed = false;
+            }
+        });
+        
         this.app.stage.on('pointerdown', (e) => {
             const pos = e.getLocalPosition(this.mainContainer);
             let clickedNode = null;
+            let clickedAspect = null;
             
+            // Сначала проверяем, не кликнули ли мы по узлу аспекта
+            for (const aspect of this.aspects.values()) {
+                for (const node of aspect.nodes) {
+                    if (this.isPointInNode(pos, node.sprite)) {
+                        clickedNode = node;
+                        clickedAspect = aspect;
+                        break;
+                    }
+                }
+                if (clickedNode) break;
+            }
+            
+            // Если не нашли узел аспекта, проверяем обычные узлы и центры
+            if (!clickedNode) {
             for (const center of this.centers) {
                 if (this.isPointInNode(pos, center.sprite)) {
                     clickedNode = center;
@@ -551,6 +594,7 @@ class BuoyancySimulation {
                 }
                 
                 if (clickedNode) break;
+                }
             }
             
             let currentTarget = e.target;
@@ -561,21 +605,44 @@ class BuoyancySimulation {
                 currentTarget = currentTarget.parent;
             }
             
-            if (clickedNode && !this.centers.includes(clickedNode)) {
+            if (clickedNode) {
+                if (clickedAspect) {
+                    // Обработка клика по аспекту
+                    this.selectedNodes.clear();
+                    clickedAspect.nodes.forEach(node => this.selectedNodes.add(node));
                 this.isDragging = true;
                 this.draggedNode = clickedNode;
                 this.dragStartX = pos.x;
                 this.dragStartY = pos.y;
-                this.selectedNode = clickedNode;
                 this.updateSelection();
+                } else if (this.centers.includes(clickedNode)) {
+                    // Обработка клика по центру
+                    this.selectedNodes.clear();
+                    this.selectedNodes.add(clickedNode);
+                    this.updateSelection();
+                } else if (this.isCtrlPressed) {
+                    // Множественное выделение аргументов
+                    if (this.selectedNodes.has(clickedNode)) {
+                        this.selectedNodes.delete(clickedNode);
+                    } else {
+                        this.selectedNodes.add(clickedNode);
+                    }
+                    this.updateSelection();
+                } else {
+                    // Одиночное выделение аргумента
+                    this.selectedNodes.clear();
+                    this.selectedNodes.add(clickedNode);
+                    this.isDragging = true;
+                    this.draggedNode = clickedNode;
+                    this.dragStartX = pos.x;
+                    this.dragStartY = pos.y;
+                this.updateSelection();
+                }
             } else if (!clickedNode) {
-                if (this.selectedNode) {
-                    this.selectedNode = null;
+                if (!this.isCtrlPressed) {
+                    this.selectedNodes.clear();
                     this.updateSelection();
                 }
-            } else if (clickedNode !== this.selectedNode) {
-                this.selectedNode = clickedNode;
-                this.updateSelection();
             }
         });
 
@@ -585,6 +652,57 @@ class BuoyancySimulation {
                 const dx = pos.x - this.dragStartX;
                 const dy = pos.y - this.dragStartY;
                 
+                if (this.draggedNode.aspect) {
+                    // Перемещаем весь аспект
+                    const aspect = this.draggedNode.aspect;
+                    aspect.x += dx;
+                    aspect.y += dy;
+                    
+                    // Обновляем позиции всех узлов аспекта
+                    let currentX = 0;
+                    const nodePositions = aspect.nodes.map(node => {
+                        const width = node.sprite.width;
+                        const position = {
+                            x: currentX,
+                            width: width
+                        };
+                        currentX += width;
+                        return position;
+                    });
+                    
+                    const totalWidth = currentX;
+                    const startX = aspect.x - totalWidth / 2;
+                    
+                    aspect.nodes.forEach((node, index) => {
+                        node.x = startX + nodePositions[index].x;
+                        node.y = aspect.y;
+                        
+                        // Обновляем связи
+                        const center = this.nodeCenters.get(node);
+                        const dxToCenter = node.x - center.x;
+                        const dyToCenter = node.y - center.y;
+                        const angle = Math.atan2(dyToCenter, dxToCenter);
+                        const distance = Math.sqrt(dxToCenter * dxToCenter + dyToCenter * dyToCenter);
+                        
+                        this.nodeAngles.set(node, angle);
+                        this.nodeDistances.set(node, distance);
+                    });
+                } else if (this.selectedNodes.size > 1) {
+                    // Перемещаем все выделенные узлы
+                    for (const node of this.selectedNodes) {
+                        node.x += dx;
+                        node.y += dy;
+                        
+                        const center = this.nodeCenters.get(node);
+                        const dxToCenter = node.x - center.x;
+                        const dyToCenter = node.y - center.y;
+                        const angle = Math.atan2(dyToCenter, dxToCenter);
+                        const distance = Math.sqrt(dxToCenter * dxToCenter + dyToCenter * dyToCenter);
+                        
+                        this.nodeAngles.set(node, angle);
+                        this.nodeDistances.set(node, distance);
+                    }
+                } else {
                 this.draggedNode.x += dx;
                 this.draggedNode.y += dy;
                 
@@ -596,6 +714,7 @@ class BuoyancySimulation {
                 
                 this.nodeAngles.set(this.draggedNode, angle);
                 this.nodeDistances.set(this.draggedNode, distance);
+                }
                 
                 this.dragStartX = pos.x;
                 this.dragStartY = pos.y;
@@ -604,6 +723,50 @@ class BuoyancySimulation {
 
         this.app.stage.on('pointerup', () => {
             if (this.draggedNode) {
+                if (this.draggedNode.aspect) {
+                    const aspect = this.draggedNode.aspect;
+                    // Обновляем позиции всех узлов аспекта
+                    let currentX = 0;
+                    const nodePositions = aspect.nodes.map(node => {
+                        const width = node.sprite.width;
+                        const position = {
+                            x: currentX,
+                            width: width
+                        };
+                        currentX += width;
+                        return position;
+                    });
+                    
+                    const totalWidth = currentX;
+                    const startX = aspect.x - totalWidth / 2;
+                    
+                    aspect.nodes.forEach((node, index) => {
+                        node.x = startX + nodePositions[index].x;
+                        node.y = aspect.y;
+                        
+                        // Обновляем связи
+                        const center = this.nodeCenters.get(node);
+                        const dxToCenter = node.x - center.x;
+                        const dyToCenter = node.y - center.y;
+                        const angle = Math.atan2(dyToCenter, dxToCenter);
+                        const distance = Math.sqrt(dxToCenter * dxToCenter + dyToCenter * dyToCenter);
+                        
+                        this.nodeAngles.set(node, angle);
+                        this.nodeDistances.set(node, distance);
+                    });
+                } else if (this.selectedNodes.size > 1) {
+                    // Обновляем углы и расстояния для всех выделенных узлов
+                    for (const node of this.selectedNodes) {
+                        const center = this.nodeCenters.get(node);
+                        const dxToCenter = node.x - center.x;
+                        const dyToCenter = node.y - center.y;
+                        const angle = Math.atan2(dyToCenter, dxToCenter);
+                        const distance = Math.sqrt(dxToCenter * dxToCenter + dyToCenter * dyToCenter);
+                        
+                        this.nodeAngles.set(node, angle);
+                        this.nodeDistances.set(node, distance);
+                    }
+                } else {
                 const center = this.nodeCenters.get(this.draggedNode);
                 const dxToCenter = this.draggedNode.x - center.x;
                 const dyToCenter = this.draggedNode.y - center.y;
@@ -612,6 +775,7 @@ class BuoyancySimulation {
                 
                 this.nodeAngles.set(this.draggedNode, angle);
                 this.nodeDistances.set(this.draggedNode, distance);
+                }
             }
             this.isDragging = false;
             this.draggedNode = null;
@@ -619,6 +783,50 @@ class BuoyancySimulation {
 
         this.app.stage.on('pointerupoutside', () => {
             if (this.draggedNode) {
+                if (this.draggedNode.aspect) {
+                    const aspect = this.draggedNode.aspect;
+                    // Обновляем позиции всех узлов аспекта
+                    let currentX = 0;
+                    const nodePositions = aspect.nodes.map(node => {
+                        const width = node.sprite.width;
+                        const position = {
+                            x: currentX,
+                            width: width
+                        };
+                        currentX += width;
+                        return position;
+                    });
+                    
+                    const totalWidth = currentX;
+                    const startX = aspect.x - totalWidth / 2;
+                    
+                    aspect.nodes.forEach((node, index) => {
+                        node.x = startX + nodePositions[index].x;
+                        node.y = aspect.y;
+                        
+                        // Обновляем связи
+                        const center = this.nodeCenters.get(node);
+                        const dxToCenter = node.x - center.x;
+                        const dyToCenter = node.y - center.y;
+                        const angle = Math.atan2(dyToCenter, dxToCenter);
+                        const distance = Math.sqrt(dxToCenter * dxToCenter + dyToCenter * dyToCenter);
+                        
+                        this.nodeAngles.set(node, angle);
+                        this.nodeDistances.set(node, distance);
+                    });
+                } else if (this.selectedNodes.size > 1) {
+                    // Обновляем углы и расстояния для всех выделенных узлов
+                    for (const node of this.selectedNodes) {
+                        const center = this.nodeCenters.get(node);
+                        const dxToCenter = node.x - center.x;
+                        const dyToCenter = node.y - center.y;
+                        const angle = Math.atan2(dyToCenter, dxToCenter);
+                        const distance = Math.sqrt(dxToCenter * dxToCenter + dyToCenter * dyToCenter);
+                        
+                        this.nodeAngles.set(node, angle);
+                        this.nodeDistances.set(node, distance);
+                    }
+                } else {
                 const center = this.nodeCenters.get(this.draggedNode);
                 const dxToCenter = this.draggedNode.x - center.x;
                 const dyToCenter = this.draggedNode.y - center.y;
@@ -627,6 +835,7 @@ class BuoyancySimulation {
                 
                 this.nodeAngles.set(this.draggedNode, angle);
                 this.nodeDistances.set(this.draggedNode, distance);
+                }
             }
             this.isDragging = false;
             this.draggedNode = null;
@@ -650,10 +859,10 @@ class BuoyancySimulation {
                 }
             }
 
-            if (this.selectedNode && !this.centers.includes(this.selectedNode)) {
+            if (this.selectedNode) {
                 if (e.key === 'ArrowUp') {
                     this.selectedNode.coef = Math.min(5, this.selectedNode.coef + 1);
-                    this.updateNode(this.selectedNode.sprite, this.getColor(this.selectedNode.coef, false), this.selectedNode.label, this.selectedNode.coef);
+                    this.updateNode(this.selectedNode.sprite, this.getColor(this.selectedNode.coef, this.centers.includes(this.selectedNode)), this.selectedNode.label, this.selectedNode.coef);
                     this.selectedNode.sprite.graphics.lineStyle(3, 0xffffff, 1);
                     this.selectedNode.sprite.graphics.drawRoundedRect(-this.selectedNode.sprite.width/2, -this.selectedNode.sprite.height/2, this.selectedNode.sprite.width, this.selectedNode.sprite.height, 10);
                     
@@ -661,14 +870,36 @@ class BuoyancySimulation {
                     if (existingCoefIndicator) {
                         this.nodesContainer.removeChild(existingCoefIndicator);
                     }
-                    const newCoefIndicator = this.createCoefIndicator(this.selectedNode.coef);
-                    newCoefIndicator.x = this.app.screen.width - 100;
-                    newCoefIndicator.y = 50;
-                    newCoefIndicator.coefIndicator = true;
-                    this.nodesContainer.addChild(newCoefIndicator);
+
+                    // Проверяем, является ли узел частью аспекта
+                    let aspectId = null;
+                    for (const [id, aspect] of this.aspects.entries()) {
+                        if (aspect.nodes.includes(this.selectedNode)) {
+                            aspectId = id;
+                            break;
+                        }
+                    }
+
+                    if (aspectId) {
+                        // Если узел часть аспекта, показываем сумму коэффициентов
+                        const aspect = this.aspects.get(aspectId);
+                        const aspectCoef = aspect.nodes.reduce((sum, node) => sum + node.coef, 0);
+                        const newCoefIndicator = this.createCoefIndicator(aspectCoef);
+                        newCoefIndicator.x = this.app.screen.width - 100;
+                        newCoefIndicator.y = 50;
+                        newCoefIndicator.coefIndicator = true;
+                        this.nodesContainer.addChild(newCoefIndicator);
+                    } else {
+                        // Иначе показываем коэффициент самого узла
+                        const newCoefIndicator = this.createCoefIndicator(this.selectedNode.coef);
+                        newCoefIndicator.x = this.app.screen.width - 100;
+                        newCoefIndicator.y = 50;
+                        newCoefIndicator.coefIndicator = true;
+                        this.nodesContainer.addChild(newCoefIndicator);
+                    }
                 } else if (e.key === 'ArrowDown') {
                     this.selectedNode.coef = Math.max(-5, this.selectedNode.coef - 1);
-                    this.updateNode(this.selectedNode.sprite, this.getColor(this.selectedNode.coef, false), this.selectedNode.label, this.selectedNode.coef);
+                    this.updateNode(this.selectedNode.sprite, this.getColor(this.selectedNode.coef, this.centers.includes(this.selectedNode)), this.selectedNode.label, this.selectedNode.coef);
                     this.selectedNode.sprite.graphics.lineStyle(3, 0xffffff, 1);
                     this.selectedNode.sprite.graphics.drawRoundedRect(-this.selectedNode.sprite.width/2, -this.selectedNode.sprite.height/2, this.selectedNode.sprite.width, this.selectedNode.sprite.height, 10);
                     
@@ -676,7 +907,72 @@ class BuoyancySimulation {
                     if (existingCoefIndicator) {
                         this.nodesContainer.removeChild(existingCoefIndicator);
                     }
-                    const newCoefIndicator = this.createCoefIndicator(this.selectedNode.coef);
+
+                    // Проверяем, является ли узел частью аспекта
+                    let aspectId = null;
+                    for (const [id, aspect] of this.aspects.entries()) {
+                        if (aspect.nodes.includes(this.selectedNode)) {
+                            aspectId = id;
+                            break;
+                        }
+                    }
+
+                    if (aspectId) {
+                        // Если узел часть аспекта, показываем сумму коэффициентов
+                        const aspect = this.aspects.get(aspectId);
+                        const aspectCoef = aspect.nodes.reduce((sum, node) => sum + node.coef, 0);
+                        const newCoefIndicator = this.createCoefIndicator(aspectCoef);
+                        newCoefIndicator.x = this.app.screen.width - 100;
+                        newCoefIndicator.y = 50;
+                        newCoefIndicator.coefIndicator = true;
+                        this.nodesContainer.addChild(newCoefIndicator);
+                    } else {
+                        // Иначе показываем коэффициент самого узла
+                        const newCoefIndicator = this.createCoefIndicator(this.selectedNode.coef);
+                        newCoefIndicator.x = this.app.screen.width - 100;
+                        newCoefIndicator.y = 50;
+                        newCoefIndicator.coefIndicator = true;
+                        this.nodesContainer.addChild(newCoefIndicator);
+                    }
+                }
+            } else if (this.selectedNodes.size > 1) {
+                // Проверяем, все ли выделенные узлы принадлежат одному аспекту
+                let commonAspectId = null;
+                for (const [id, aspect] of this.aspects.entries()) {
+                    const allSelectedInThisAspect = Array.from(this.selectedNodes).every(node => aspect.nodes.includes(node));
+                    if (allSelectedInThisAspect) {
+                        commonAspectId = id;
+                        break;
+                    }
+                }
+
+                if (commonAspectId) {
+                    const aspect = this.aspects.get(commonAspectId);
+                    if (e.key === 'ArrowUp') {
+                        // Увеличиваем коэффициент всех выделенных узлов
+                        for (const node of this.selectedNodes) {
+                            node.coef = Math.min(5, node.coef + 1);
+                            this.updateNode(node.sprite, this.getColor(node.coef, false), node.label, node.coef);
+                            node.sprite.graphics.lineStyle(3, 0xffffff, 1);
+                            node.sprite.graphics.drawRoundedRect(-node.sprite.width/2, -node.sprite.height/2, node.sprite.width, node.sprite.height, 10);
+                        }
+                    } else if (e.key === 'ArrowDown') {
+                        // Уменьшаем коэффициент всех выделенных узлов
+                        for (const node of this.selectedNodes) {
+                            node.coef = Math.max(-5, node.coef - 1);
+                            this.updateNode(node.sprite, this.getColor(node.coef, false), node.label, node.coef);
+                            node.sprite.graphics.lineStyle(3, 0xffffff, 1);
+                            node.sprite.graphics.drawRoundedRect(-node.sprite.width/2, -node.sprite.height/2, node.sprite.width, node.sprite.height, 10);
+                        }
+                    }
+
+                    // Обновляем индикатор коэффициента аспекта
+                    const existingCoefIndicator = this.nodesContainer.children.find(child => child.coefIndicator === true);
+                    if (existingCoefIndicator) {
+                        this.nodesContainer.removeChild(existingCoefIndicator);
+                    }
+                    const aspectCoef = aspect.nodes.reduce((sum, node) => sum + node.coef, 0);
+                    const newCoefIndicator = this.createCoefIndicator(aspectCoef);
                     newCoefIndicator.x = this.app.screen.width - 100;
                     newCoefIndicator.y = 50;
                     newCoefIndicator.coefIndicator = true;
@@ -695,81 +991,138 @@ class BuoyancySimulation {
     }
 
     startTextEditing(node) {
-        // Проверяем, не открыта ли уже панель редактирования
-        const existingPanel = document.querySelector('div[style*="position: absolute"][style*="z-index: 1000"]');
-        if (existingPanel) {
-            document.body.removeChild(existingPanel);
-        }
-
         const isCenter = this.centers.includes(node);
-        const container = isCenter ? this.centersContainer : this.nodesContainer;
+        const sprite = node.sprite;
         
-        // Создаем панель редактирования
-        const panel = document.createElement('div');
-        panel.style.position = 'absolute';
-        panel.style.top = '50px';
-        panel.style.left = '50%';
-        panel.style.transform = 'translateX(-50%)';
-        panel.style.zIndex = '1000';
+        // Сохраняем оригинальный текст и временно удаляем его из спрайта
+        const originalText = sprite.labelText;
+        if (originalText && originalText.parent) {
+            originalText.parent.removeChild(originalText);
+        }
         
         // Создаем текстовое поле
-        const textarea = document.createElement('textarea');
-        textarea.value = node.label;
-        textarea.style.width = '300px';
-        textarea.style.height = '100px';
-        textarea.style.padding = '8px';
-        textarea.style.backgroundColor = '#222222';
-        textarea.style.color = '#ffffff';
-        textarea.style.border = '1px solid #666666';
-        textarea.style.borderRadius = '4px';
-        textarea.style.resize = 'none';
-        textarea.style.fontSize = '16px';
-        textarea.style.fontFamily = 'Arial, sans-serif';
-        textarea.style.outline = 'none';
-        panel.appendChild(textarea);
+        const textInput = document.createElement('textarea');
+        textInput.value = node.label;
+        textInput.style.position = 'absolute';
+        textInput.style.backgroundColor = 'transparent';
+        textInput.style.border = 'none';
+        textInput.style.outline = 'none';
+        textInput.style.color = '#ffffff';
+        textInput.style.fontSize = '18px';
+        textInput.style.fontWeight = 'bold';
+        textInput.style.textAlign = 'center';
+        textInput.style.width = (sprite.width - this.padding * 2) + 'px';
+        textInput.style.height = 'auto';
+        textInput.style.minHeight = (sprite.height - this.padding * 2) + 'px';
+        textInput.style.resize = 'none';
+        textInput.style.overflow = 'hidden';
+        textInput.style.padding = '0';
+        textInput.style.margin = '0';
+        textInput.style.fontFamily = 'Arial, sans-serif';
+        textInput.style.zIndex = '1000';
         
-        // Добавляем панель на страницу
-        document.body.appendChild(panel);
+        // Позиционируем текстовое поле
+        const rect = sprite.getBounds();
+        const globalPos = sprite.toGlobal(new PIXI.Point(0, 0));
+        textInput.style.left = (globalPos.x - rect.width/2 + this.padding) + 'px';
+        textInput.style.top = (globalPos.y - rect.height/2 + this.padding) + 'px';
+        
+        // Добавляем текстовое поле на страницу
+        document.body.appendChild(textInput);
         
         // Фокусируемся на текстовом поле и выделяем весь текст
-        textarea.focus();
-        textarea.select();
+        textInput.focus();
+        textInput.select();
+        
+        // Функция для автоматической подстройки высоты
+        const adjustHeight = () => {
+            textInput.style.height = 'auto';
+            textInput.style.height = (textInput.scrollHeight) + 'px';
+        };
+        
+        // Функция для обновления размеров спрайта
+        const updateSpriteSize = () => {
+            const newLabel = textInput.value.trim();
+            if (newLabel) {
+                // Сначала подстраиваем высоту текстового поля
+                adjustHeight();
+                
+                const { width, height } = this.calculateNodeDimensions(newLabel);
+                sprite.width = width;
+                sprite.height = height;
+                
+                // Обновляем только графику, без текста
+                if (!sprite.graphics) {
+                    sprite.graphics = new PIXI.Graphics();
+                    sprite.addChildAt(sprite.graphics, 0);
+                }
+                sprite.graphics.clear();
+                sprite.graphics.beginFill(this.getColor(node.coef, isCenter));
+                sprite.graphics.drawRoundedRect(-width/2, -height/2, width, height, 10);
+                sprite.graphics.endFill();
+                
+                // Обновляем позицию текстового поля
+                const newRect = sprite.getBounds();
+                const newGlobalPos = sprite.toGlobal(new PIXI.Point(0, 0));
+                textInput.style.left = (newGlobalPos.x - newRect.width/2 + this.padding) + 'px';
+                textInput.style.top = (newGlobalPos.y - newRect.height/2 + this.padding) + 'px';
+                textInput.style.width = (width - this.padding * 2) + 'px';
+                textInput.style.minHeight = (height - this.padding * 2) + 'px';
+            }
+        };
+        
+        // Флаг для отслеживания, было ли уже выполнено завершение редактирования
+        let isEditingFinished = false;
+        
+        const finishEditing = () => {
+            if (isEditingFinished) return;
+            isEditingFinished = true;
+            
+            const newLabel = textInput.value.trim();
+            if (newLabel) {
+                node.label = newLabel;
+                this.updateNode(sprite, this.getColor(node.coef, isCenter), newLabel, node.coef);
+                if (isCenter) {
+                    this.updateCentersPositions();
+                }
+            }
+            
+            if (textInput.parentNode === document.body) {
+                document.body.removeChild(textInput);
+            }
+        };
         
         // Обработчики событий
-        const closePanel = () => {
-            if (panel.parentNode === document.body) {
-                const newLabel = textarea.value.trim();
-                if (newLabel) {
-                    node.label = newLabel;
-                    this.updateNode(node.sprite, this.getColor(node.coef, isCenter), newLabel, node.coef);
-                    if (isCenter) {
-                        this.updateCentersPositions();
-                    }
-                }
-                document.body.removeChild(panel);
+        textInput.addEventListener('input', updateSpriteSize);
+        textInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                finishEditing();
             }
-        };
+        });
+        textInput.addEventListener('blur', finishEditing);
         
-        // Закрываем панель при клике вне её
-        const clickOutsideHandler = (e) => {
-            if (!panel.contains(e.target)) {
-                closePanel();
-                document.removeEventListener('click', clickOutsideHandler);
-            }
-        };
-        
-        // Добавляем небольшую задержку перед добавлением обработчика клика
-        setTimeout(() => {
-            document.addEventListener('click', clickOutsideHandler);
-        }, 100);
-        
-        // Предотвращаем закрытие при клике на панель
-        panel.onclick = (e) => {
+        // Предотвращаем закрытие при клике на текстовое поле
+        textInput.onclick = (e) => {
             e.stopPropagation();
         };
     }
 
     updateSelection() {
+        // Сначала очищаем все рамки выделения
+        for (const center of this.centers) {
+            for (const node of center.nodes) {
+                if (node.sprite) {
+                    node.sprite.graphics.clear();
+                    this.layoutNode(node.sprite, this.getColor(node.coef, false), node.label, node.coef);
+                }
+            }
+            if (center.sprite) {
+                center.sprite.graphics.clear();
+                this.layoutNode(center.sprite, this.getColor(center.coef, true), center.label, center.coef);
+            }
+        }
+
         for (const center of this.centers) {
             center.nodes.sort((a, b) => b.zIndex - a.zIndex);
             
@@ -777,7 +1130,7 @@ class BuoyancySimulation {
             this.layoutNode(center.sprite, this.getColor(center.coef, true), center.label, center.coef);
             
             center.nodes.forEach(node => {
-                if (node !== this.selectedNode) {
+                if (!this.selectedNodes.has(node)) {
                     node.sprite.zIndex = node.zIndex;
                     this.layoutNode(node.sprite, this.getColor(node.coef, false), node.label, node.coef);
                 }
@@ -807,70 +1160,182 @@ class BuoyancySimulation {
             }
         }
 
-        if (this.selectedNode) {
-            const selectedSprite = this.selectedNode.sprite;
-            const currentZIndex = this.selectedNode.zIndex;
-            this.selectedNode.zIndex = 1000;
-            selectedSprite.zIndex = 1000;
+        if (this.selectedNodes.size > 0) {
+            // Проверяем, все ли выделенные узлы принадлежат одному аспекту
+            let commonAspectId = null;
+            let allNodesInSameAspect = true;
             
-            const container = selectedSprite.parent;
-            if (container) {
-                container.removeChild(selectedSprite);
-                container.addChild(selectedSprite);
+            for (const [id, aspect] of this.aspects.entries()) {
+                const allSelectedInThisAspect = Array.from(this.selectedNodes).every(node => aspect.nodes.includes(node));
+                if (allSelectedInThisAspect) {
+                    commonAspectId = id;
+                    break;
+                }
             }
-            
-            selectedSprite.graphics.lineStyle(3, 0xffffff, 1);
-            selectedSprite.graphics.drawRoundedRect(-selectedSprite.width/2, -selectedSprite.height/2, selectedSprite.width, selectedSprite.height, 10);
-            
-            const coefIndicator = this.createCoefIndicator(this.selectedNode.coef);
-            coefIndicator.x = this.app.screen.width - 100;
-            coefIndicator.y = 50;
-            coefIndicator.coefIndicator = true;
-            this.nodesContainer.addChild(coefIndicator);
 
-            if (!this.centers.includes(this.selectedNode)) {
-                const plusBtn = this.createSmallStyledButton('За', this.app.screen.width - 180, 50, () => {
-                    this.selectedNode.coef = Math.min(5, this.selectedNode.coef + 1);
-                    this.updateNode(this.selectedNode.sprite, this.getColor(this.selectedNode.coef, false), this.selectedNode.label, this.selectedNode.coef);
-                    this.selectedNode.sprite.graphics.lineStyle(3, 0xffffff, 1);
-                    this.selectedNode.sprite.graphics.drawRoundedRect(-this.selectedNode.sprite.width/2, -this.selectedNode.sprite.height/2, this.selectedNode.sprite.width, this.selectedNode.sprite.height, 10);
-                    
-                    const existingCoefIndicator = this.nodesContainer.children.find(child => child.coefIndicator === true);
-                    if (existingCoefIndicator) {
-                        this.nodesContainer.removeChild(existingCoefIndicator);
+            for (const selectedNode of this.selectedNodes) {
+                const selectedSprite = selectedNode.sprite;
+                const currentZIndex = selectedNode.zIndex;
+                selectedNode.zIndex = 1000;
+                selectedSprite.zIndex = 1000;
+                
+                const container = selectedSprite.parent;
+                if (container) {
+                    container.removeChild(selectedSprite);
+                    container.addChild(selectedSprite);
+                }
+                
+                // Проверяем, является ли узел частью аспекта
+                let isPartOfAspect = false;
+                for (const aspect of this.aspects.values()) {
+                    if (aspect.nodes.includes(selectedNode)) {
+                        isPartOfAspect = true;
+                        break;
                     }
-                    const newCoefIndicator = this.createCoefIndicator(this.selectedNode.coef);
-                    newCoefIndicator.x = this.app.screen.width - 100;
-                    newCoefIndicator.y = 50;
-                    newCoefIndicator.coefIndicator = true;
-                    this.nodesContainer.addChild(newCoefIndicator);
-                });
+                }
+                
+                if (isPartOfAspect) {
+                    selectedSprite.graphics.lineStyle(3, 0xffff00, 1);
+                } else {
+                    selectedSprite.graphics.lineStyle(3, 0xffffff, 1);
+                }
+                selectedSprite.graphics.drawRoundedRect(-selectedSprite.width/2, -selectedSprite.height/2, selectedSprite.width, selectedSprite.height, 10);
+            }
 
-                const minusBtn = this.createSmallStyledButton('Против', this.app.screen.width - 300, 50, () => {
-                    this.selectedNode.coef = Math.max(-5, this.selectedNode.coef - 1);
-                    this.updateNode(this.selectedNode.sprite, this.getColor(this.selectedNode.coef, false), this.selectedNode.label, this.selectedNode.coef);
-                    this.selectedNode.sprite.graphics.lineStyle(3, 0xffffff, 1);
-                    this.selectedNode.sprite.graphics.drawRoundedRect(-this.selectedNode.sprite.width/2, -this.selectedNode.sprite.height/2, this.selectedNode.sprite.width, this.selectedNode.sprite.height, 10);
+            if (this.selectedNodes.size === 1) {
+                const selectedNode = Array.from(this.selectedNodes)[0];
+                
+                if (this.centers.includes(selectedNode)) {
+                    // Обработка выделенного центра
+                    this.deleteCenterButton.style.display = 'block';
+                    this.addControlButtons(selectedNode);
                     
-                    const existingCoefIndicator = this.nodesContainer.children.find(child => child.coefIndicator === true);
-                    if (existingCoefIndicator) {
-                        this.nodesContainer.removeChild(existingCoefIndicator);
+                    // Добавляем индикатор коэффициента для центра
+                    const coefIndicator = this.createCoefIndicator(selectedNode.coef);
+                    coefIndicator.x = this.app.screen.width - 100;
+                    coefIndicator.y = 50;
+                    coefIndicator.coefIndicator = true;
+                    this.nodesContainer.addChild(coefIndicator);
+                } else {
+                    // Проверяем, является ли узел частью аспекта
+                    let isPartOfAspect = false;
+                    let aspectId = null;
+                    for (const [id, aspect] of this.aspects.entries()) {
+                        if (aspect.nodes.includes(selectedNode)) {
+                            isPartOfAspect = true;
+                            aspectId = id;
+                            break;
+                        }
                     }
-                    const newCoefIndicator = this.createCoefIndicator(this.selectedNode.coef);
-                    newCoefIndicator.x = this.app.screen.width - 100;
-                    newCoefIndicator.y = 50;
-                    newCoefIndicator.coefIndicator = true;
-                    this.nodesContainer.addChild(newCoefIndicator);
-                });
+                    
+                    if (!isPartOfAspect) {
+                        // Обработка выделенного аргумента
+                        const coefIndicator = this.createCoefIndicator(selectedNode.coef);
+                        coefIndicator.x = this.app.screen.width - 100;
+                        coefIndicator.y = 50;
+                        coefIndicator.coefIndicator = true;
+                        this.nodesContainer.addChild(coefIndicator);
 
-                this.nodesContainer.addChild(plusBtn, minusBtn);
+                        const plusBtn = this.createSmallStyledButton('За', this.app.screen.width - 180, 50, () => {
+                            selectedNode.coef = Math.min(5, selectedNode.coef + 1);
+                            this.updateNode(selectedNode.sprite, this.getColor(selectedNode.coef, false), selectedNode.label, selectedNode.coef);
+                            selectedNode.sprite.graphics.lineStyle(3, 0xffffff, 1);
+                            selectedNode.sprite.graphics.drawRoundedRect(-selectedNode.sprite.width/2, -selectedNode.sprite.height/2, selectedNode.sprite.width, selectedNode.sprite.height, 10);
+                            
+                            const existingCoefIndicator = this.nodesContainer.children.find(child => child.coefIndicator === true);
+                            if (existingCoefIndicator) {
+                                this.nodesContainer.removeChild(existingCoefIndicator);
+                            }
+                            const newCoefIndicator = this.createCoefIndicator(selectedNode.coef);
+                            newCoefIndicator.x = this.app.screen.width - 100;
+                            newCoefIndicator.y = 50;
+                            newCoefIndicator.coefIndicator = true;
+                            this.nodesContainer.addChild(newCoefIndicator);
+                        });
+
+                        const minusBtn = this.createSmallStyledButton('Против', this.app.screen.width - 300, 50, () => {
+                            selectedNode.coef = Math.max(-5, selectedNode.coef - 1);
+                            this.updateNode(selectedNode.sprite, this.getColor(selectedNode.coef, false), selectedNode.label, selectedNode.coef);
+                            selectedNode.sprite.graphics.lineStyle(3, 0xffffff, 1);
+                            selectedNode.sprite.graphics.drawRoundedRect(-selectedNode.sprite.width/2, -selectedNode.sprite.height/2, selectedNode.sprite.width, selectedNode.sprite.height, 10);
+                            
+                            const existingCoefIndicator = this.nodesContainer.children.find(child => child.coefIndicator === true);
+                            if (existingCoefIndicator) {
+                                this.nodesContainer.removeChild(existingCoefIndicator);
+                            }
+                            const newCoefIndicator = this.createCoefIndicator(selectedNode.coef);
+                            newCoefIndicator.x = this.app.screen.width - 100;
+                            newCoefIndicator.y = 50;
+                            newCoefIndicator.coefIndicator = true;
+                            this.nodesContainer.addChild(newCoefIndicator);
+                        });
+
+                        this.nodesContainer.addChild(plusBtn, minusBtn);
+                    } else {
+                        // Добавляем кнопку разъединения аспекта
+                        const splitButton = this.createStyledButton('Разъединить аспект', this.app.screen.width - 300, 50, () => {
+                            this.splitAspect(aspectId);
+                            this.updateSelection();
+                        });
+                        this.nodesContainer.addChild(splitButton);
+
+                        // Добавляем индикатор коэффициента для аспекта
+                        const aspect = this.aspects.get(aspectId);
+                        const aspectCoef = aspect.nodes.reduce((sum, node) => sum + node.coef, 0);
+                        const coefIndicator = this.createCoefIndicator(aspectCoef);
+                        coefIndicator.x = this.app.screen.width - 100;
+                        coefIndicator.y = 50;
+                        coefIndicator.coefIndicator = true;
+                        this.nodesContainer.addChild(coefIndicator);
+                    }
+                }
+            } else if (this.selectedNodes.size > 1) {
+                // Проверяем, что все выделенные узлы - аргументы
+                const allAreArguments = Array.from(this.selectedNodes).every(node => !this.centers.includes(node));
+                
+                if (allAreArguments) {
+                    if (commonAspectId !== null) {
+                        // Если все выделенные узлы принадлежат одному аспекту, показываем кнопку разъединения
+                        const splitButton = this.createStyledButton('Разъединить аспект', this.app.screen.width - 300, 50, () => {
+                            this.splitAspect(commonAspectId);
+                            this.updateSelection();
+                        });
+                        this.nodesContainer.addChild(splitButton);
+
+                        // Добавляем индикатор коэффициента для аспекта
+                        const aspect = this.aspects.get(commonAspectId);
+                        const aspectCoef = aspect.nodes.reduce((sum, node) => sum + node.coef, 0);
+                        const coefIndicator = this.createCoefIndicator(aspectCoef);
+                        coefIndicator.x = this.app.screen.width - 100;
+                        coefIndicator.y = 50;
+                        coefIndicator.coefIndicator = true;
+                        this.nodesContainer.addChild(coefIndicator);
+                    } else {
+                        // Проверяем, что все узлы не являются частью аспекта
+                        const allAreNotInAspect = Array.from(this.selectedNodes).every(node => {
+                            for (const aspect of this.aspects.values()) {
+                                if (aspect.nodes.includes(node)) {
+                                    return false;
+                                }
+                            }
+                            return true;
+                        });
+                        
+                        if (allAreNotInAspect) {
+                            // Добавляем кнопку объединения в аспект
+                            const mergeButton = this.createStyledButton('Объединить в аспект', this.app.screen.width - 300, 50, () => {
+                                const aspect = this.createAspect(Array.from(this.selectedNodes));
+                                this.updateSelection();
+                            });
+                            this.nodesContainer.addChild(mergeButton);
+                        }
+                    }
+                }
             }
             
             if (this.deleteCenterButton) {
-                this.deleteCenterButton.style.display = this.centers.includes(this.selectedNode) ? 'block' : 'none';
+                this.deleteCenterButton.style.display = Array.from(this.selectedNodes).some(node => this.centers.includes(node)) ? 'block' : 'none';
             }
-            
-            this.addControlButtons(this.selectedNode);
         } else {
             if (this.deleteCenterButton) {
                 this.deleteCenterButton.style.display = 'none';
@@ -1024,7 +1489,69 @@ class BuoyancySimulation {
         saveButton.style.cursor = 'pointer';
         saveButton.style.marginRight = '10px';
         
-        saveButton.onclick = () => this.saveToJson();
+        saveButton.onclick = async () => {
+            try {
+                const projectData = {
+                    centers: this.centers.map(center => ({
+                        x: center.x,
+                        y: center.y,
+                        coef: center.coef,
+                        label: center.label,
+                        nodes: center.nodes.map(node => ({
+                            x: node.x,
+                            y: node.y,
+                            coef: node.coef,
+                            label: node.label,
+                            angle: this.nodeAngles.get(node),
+                            distance: this.nodeDistances.get(node),
+                            aspectId: node.aspect ? node.aspect.id : null
+                        }))
+                    })),
+                    aspects: Array.from(this.aspects.entries()).map(([id, aspect]) => ({
+                        id: id,
+                        nodes: aspect.nodes.map(node => ({
+                            centerId: this.centers.indexOf(this.nodeCenters.get(node)),
+                            nodeIndex: this.nodeCenters.get(node).nodes.indexOf(node)
+                        })),
+                        x: aspect.x,
+                        y: aspect.y
+                    }))
+                };
+
+                const jsonString = JSON.stringify(projectData, null, 2);
+                const blob = new Blob([jsonString], { type: 'application/json' });
+
+                // Используем File System Access API
+                if ('showSaveFilePicker' in window) {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: 'buoyancy_project.json',
+                        types: [{
+                            description: 'JSON файл',
+                            accept: {
+                                'application/json': ['.json']
+                            }
+                        }]
+                    });
+                    const writable = await handle.createWritable();
+                    await writable.write(blob);
+                    await writable.close();
+                } else {
+                    // Fallback для браузеров, не поддерживающих File System Access API
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'buoyancy_project.json';
+                    a.style.display = 'none';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }
+            } catch (error) {
+                console.error('Ошибка при сохранении проекта:', error);
+                alert('Ошибка при сохранении проекта. Попробуйте еще раз.');
+            }
+        };
         document.body.appendChild(saveButton);
 
         const loadButton = document.createElement('button');
@@ -1039,7 +1566,31 @@ class BuoyancySimulation {
         loadButton.style.borderRadius = '4px';
         loadButton.style.cursor = 'pointer';
         
-        loadButton.onclick = () => this.loadFromJson();
+        loadButton.onclick = () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        try {
+                            const projectData = JSON.parse(event.target.result);
+                            this.clearCurrentProject();
+                            this.loadProjectData(projectData);
+                        } catch (error) {
+                            console.error('Ошибка при загрузке проекта:', error);
+                            alert('Ошибка при загрузке проекта. Проверьте формат файла.');
+                        }
+                    };
+                    reader.readAsText(file);
+                }
+            };
+            
+            input.click();
+        };
         document.body.appendChild(loadButton);
 
         const addCenterButton = document.createElement('button');
@@ -1091,20 +1642,23 @@ class BuoyancySimulation {
         deleteCenterButton.style.display = 'none';
         
         deleteCenterButton.onclick = () => {
-            if (this.selectedNode && this.centers.includes(this.selectedNode) && this.centers.length > 1) {
-                const index = this.centers.indexOf(this.selectedNode);
-                if (index !== -1) {
-                    for (const centerNode of this.selectedNode.nodes) {
-                        this.nodesContainer.removeChild(centerNode.sprite);
-                        this.linksContainer.removeChild(centerNode.link);
+            const selectedCenters = Array.from(this.selectedNodes).filter(node => this.centers.includes(node));
+            if (selectedCenters.length > 0 && this.centers.length > selectedCenters.length) {
+                for (const center of selectedCenters) {
+                    const index = this.centers.indexOf(center);
+                    if (index !== -1) {
+                        for (const centerNode of center.nodes) {
+                            this.nodesContainer.removeChild(centerNode.sprite);
+                            this.linksContainer.removeChild(centerNode.link);
+                        }
+                        this.centersContainer.removeChild(center.sprite);
+                        this.centers.splice(index, 1);
                     }
-                    this.centersContainer.removeChild(this.selectedNode.sprite);
-                    this.centers.splice(index, 1);
-                    this.updateCentersPositions();
-                    this.selectedNode = null;
-                    this.updateSelection();
-                    deleteCenterButton.style.display = 'none';
                 }
+                this.updateCentersPositions();
+                this.selectedNodes.clear();
+                this.updateSelection();
+                deleteCenterButton.style.display = 'none';
             }
         };
         
@@ -1125,8 +1679,18 @@ class BuoyancySimulation {
                     coef: node.coef,
                     label: node.label,
                     angle: this.nodeAngles.get(node),
-                    distance: this.nodeDistances.get(node)
+                    distance: this.nodeDistances.get(node),
+                    aspectId: node.aspect ? node.aspect.id : null
                 }))
+            })),
+            aspects: Array.from(this.aspects.entries()).map(([id, aspect]) => ({
+                id: id,
+                nodes: aspect.nodes.map(node => ({
+                    centerId: this.centers.indexOf(this.nodeCenters.get(node)),
+                    nodeIndex: this.nodeCenters.get(node).nodes.indexOf(node)
+                })),
+                x: aspect.x,
+                y: aspect.y
             }))
         };
 
@@ -1191,6 +1755,10 @@ class BuoyancySimulation {
         this.isDragging = false;
         this.draggedNode = null;
         
+        // Очищаем существующие аспекты
+        this.aspects.clear();
+        
+        // Создаем центры и узлы
         for (const centerData of projectData.centers) {
             const center = {
                 x: centerData.x,
@@ -1239,6 +1807,37 @@ class BuoyancySimulation {
             }
         }
         
+        // Восстанавливаем аспекты, если они есть в данных
+        if (projectData.aspects) {
+            for (const aspectData of projectData.aspects) {
+                const aspectNodes = aspectData.nodes.map(nodeRef => {
+                    const center = this.centers[nodeRef.centerId];
+                    return center.nodes[nodeRef.nodeIndex];
+                });
+                
+                const aspect = {
+                    id: aspectData.id,
+                    nodes: aspectNodes,
+                    isAspect: true,
+                    isAnimating: false,
+                    x: aspectData.x,
+                    y: aspectData.y,
+                    vx: 0,
+                    vy: 0
+                };
+                
+                this.aspects.set(aspectData.id, aspect);
+                
+                // Обновляем ссылки на аспект для каждого узла
+                aspectNodes.forEach(node => {
+                    node.isAspectNode = true;
+                    node.aspect = aspect;
+                    node.sprite.graphics.lineStyle(3, 0xffff00, 1);
+                    node.sprite.graphics.drawRoundedRect(-node.sprite.width/2, -node.sprite.height/2, node.sprite.width, node.sprite.height, 10);
+                });
+            }
+        }
+        
         this.updateSelection();
         
         this.isDragging = false;
@@ -1261,6 +1860,152 @@ class BuoyancySimulation {
         const memoryButton = document.querySelector('button[style*="position: absolute"]');
         if (memoryButton) {
             memoryButton.remove();
+        }
+    }
+
+    // Добавляем новый метод для создания аспекта
+    createAspect(nodes) {
+        const aspectId = 'aspect_' + Date.now();
+        
+        // Сортируем узлы по их текущему положению
+        const sortedNodes = [...nodes].sort((a, b) => {
+            // Сначала сортируем по центру, к которому они привязаны
+            const centerA = this.nodeCenters.get(a);
+            const centerB = this.nodeCenters.get(b);
+            if (centerA !== centerB) {
+                return centerA.x - centerB.x;
+            }
+            // Если центры одинаковые, сортируем по x-координате
+            return a.x - b.x;
+        });
+        
+        const aspect = {
+            id: aspectId,
+            nodes: sortedNodes,
+            isAspect: true,
+            isAnimating: true,
+            x: 0,
+            y: 0,
+            vx: 0,
+            vy: 0
+        };
+        
+        // Сохраняем аспект
+        this.aspects.set(aspectId, aspect);
+        
+        // Вычисляем центр аспекта
+        const targetX = sortedNodes.reduce((sum, node) => sum + node.x, 0) / sortedNodes.length;
+        const targetY = sortedNodes.reduce((sum, node) => sum + node.y, 0) / sortedNodes.length;
+        
+        // Сохраняем начальные позиции
+        const startPositions = sortedNodes.map(node => ({
+            x: node.x,
+            y: node.y,
+            vx: node.vx,
+            vy: node.vy
+        }));
+        
+        // Отключаем физику для узлов аспекта
+        sortedNodes.forEach(node => {
+            node.vx = 0;
+            node.vy = 0;
+            node.isAspectNode = true;
+            node.aspect = aspect;
+        });
+        
+        let startTime = null;
+        const duration = 1000;
+        
+        // Функция интерполяции
+        const easeInOutCubic = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        
+        // Вычисляем конечные позиции для горизонтального расположения
+        let currentX = 0;
+        const nodePositions = sortedNodes.map(node => {
+            const width = node.sprite.width;
+            const position = {
+                x: currentX,
+                width: width
+            };
+            currentX += width;
+            return position;
+        });
+        
+        const totalWidth = currentX;
+        const startX = targetX - totalWidth / 2;
+        
+        // Анимируем перемещение всех узлов
+        const animate = (currentTime) => {
+            if (!startTime) startTime = currentTime;
+            const elapsed = currentTime - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const easedProgress = easeInOutCubic(progress);
+            
+            // Обновляем позиции всех узлов
+            sortedNodes.forEach((node, index) => {
+                const startPos = startPositions[index];
+                const finalX = startX + nodePositions[index].x;
+                node.x = startPos.x + (finalX - startPos.x) * easedProgress;
+                node.y = startPos.y + (targetY - startPos.y) * easedProgress;
+                
+                // Обновляем связи
+                const center = this.nodeCenters.get(node);
+                const dxToCenter = node.x - center.x;
+                const dyToCenter = node.y - center.y;
+                const angle = Math.atan2(dyToCenter, dxToCenter);
+                const distance = Math.sqrt(dxToCenter * dxToCenter + dyToCenter * dyToCenter);
+                
+                this.nodeAngles.set(node, angle);
+                this.nodeDistances.set(node, distance);
+            });
+            
+            if (progress < 1) {
+                requestAnimationFrame(animate);
+            } else {
+                // Завершение анимации
+                aspect.isAnimating = false;
+                aspect.x = targetX;
+                aspect.y = targetY;
+                
+                // Добавляем специальную рамку для аспекта
+                sortedNodes.forEach(node => {
+                    node.sprite.graphics.lineStyle(3, 0xffff00, 1);
+                    node.sprite.graphics.drawRoundedRect(-node.sprite.width/2, -node.sprite.height/2, node.sprite.width, node.sprite.height, 10);
+                });
+            }
+        };
+        
+        requestAnimationFrame(animate);
+        return aspect;
+    }
+
+    // Обновляем метод splitAspect для восстановления физики
+    splitAspect(aspectId) {
+        const aspect = this.aspects.get(aspectId);
+        if (aspect) {
+            // Удаляем специальную рамку и флаг аспекта
+            for (const node of aspect.nodes) {
+                node.isAspectNode = false;
+                node.aspect = null;
+                node.sprite.graphics.clear();
+                this.layoutNode(node.sprite, this.getColor(node.coef, false), node.label, node.coef);
+                
+                // Восстанавливаем физику для узла
+                const center = this.nodeCenters.get(node);
+                const dxToCenter = node.x - center.x;
+                const dyToCenter = node.y - center.y;
+                const angle = Math.atan2(dyToCenter, dxToCenter);
+                const distance = Math.sqrt(dxToCenter * dxToCenter + dyToCenter * dyToCenter);
+                
+                this.nodeAngles.set(node, angle);
+                this.nodeDistances.set(node, distance);
+            }
+            
+            // Удаляем аспект
+            this.aspects.delete(aspectId);
+            
+            // Очищаем выделение
+            this.selectedNodes.clear();
         }
     }
 }
