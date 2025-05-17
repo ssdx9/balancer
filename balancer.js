@@ -694,6 +694,110 @@ class BuoyancySimulation {
         return Math.abs(dx) < width/2 && Math.abs(dy) < height/2;
     }
 
+    startTextEditing(node) {
+        const isCenter = this.centers.includes(node);
+        const container = isCenter ? this.centersContainer : this.nodesContainer;
+        
+        // Создаем панель редактирования
+        const panel = document.createElement('div');
+        panel.style.position = 'absolute';
+        panel.style.top = '50px';
+        panel.style.left = '50%';
+        panel.style.transform = 'translateX(-50%)';
+        panel.style.backgroundColor = '#333333';
+        panel.style.padding = '20px';
+        panel.style.borderRadius = '8px';
+        panel.style.boxShadow = '0 0 10px rgba(0,0,0,0.5)';
+        panel.style.zIndex = '1000';
+        
+        // Добавляем заголовок
+        const title = document.createElement('b');
+        title.textContent = isCenter ? 'Редактирование варианта' : 'Редактирование аргумента';
+        title.style.display = 'block';
+        title.style.marginBottom = '10px';
+        title.style.color = '#ffffff';
+        panel.appendChild(title);
+        
+        // Создаем текстовое поле
+        const textarea = document.createElement('textarea');
+        textarea.value = node.label;
+        textarea.style.width = '300px';
+        textarea.style.height = '100px';
+        textarea.style.marginBottom = '10px';
+        textarea.style.padding = '8px';
+        textarea.style.backgroundColor = '#222222';
+        textarea.style.color = '#ffffff';
+        textarea.style.border = '1px solid #666666';
+        textarea.style.borderRadius = '4px';
+        textarea.style.resize = 'none';
+        panel.appendChild(textarea);
+        
+        // Создаем кнопки
+        const buttonContainer = document.createElement('div');
+        buttonContainer.style.display = 'flex';
+        buttonContainer.style.justifyContent = 'flex-end';
+        buttonContainer.style.gap = '10px';
+        
+        const saveButton = document.createElement('button');
+        saveButton.textContent = 'Сохранить';
+        saveButton.style.padding = '8px 16px';
+        saveButton.style.backgroundColor = '#4CAF50';
+        saveButton.style.color = '#ffffff';
+        saveButton.style.border = 'none';
+        saveButton.style.borderRadius = '4px';
+        saveButton.style.cursor = 'pointer';
+        
+        const cancelButton = document.createElement('button');
+        cancelButton.textContent = 'Отмена';
+        cancelButton.style.padding = '8px 16px';
+        cancelButton.style.backgroundColor = '#666666';
+        cancelButton.style.color = '#ffffff';
+        cancelButton.style.border = 'none';
+        cancelButton.style.borderRadius = '4px';
+        cancelButton.style.cursor = 'pointer';
+        
+        buttonContainer.appendChild(cancelButton);
+        buttonContainer.appendChild(saveButton);
+        panel.appendChild(buttonContainer);
+        
+        // Добавляем панель на страницу
+        document.body.appendChild(panel);
+        
+        // Фокусируемся на текстовом поле
+        textarea.focus();
+        
+        // Обработчики событий
+        const closePanel = () => {
+            document.body.removeChild(panel);
+        };
+        
+        saveButton.onclick = () => {
+            const newLabel = textarea.value.trim();
+            if (newLabel) {
+                node.label = newLabel;
+                this.updateNode(node.sprite, this.getColor(node.coef, isCenter), newLabel, node.coef);
+                if (isCenter) {
+                    this.updateCentersPositions();
+                }
+            }
+            closePanel();
+        };
+        
+        cancelButton.onclick = closePanel;
+        
+        // Закрываем панель при клике вне её
+        document.addEventListener('click', (e) => {
+            if (!panel.contains(e.target)) {
+                closePanel();
+            }
+        });
+        
+        // Предотвращаем закрытие при клике на панель
+        panel.onclick = (e) => {
+            e.stopPropagation();
+        };
+    }
+
     updateSelection() {
         for (const center of this.centers) {
             center.nodes.sort((a, b) => b.zIndex - a.zIndex);
