@@ -710,39 +710,30 @@ class BuoyancySimulation {
         panel.style.top = '50px';
         panel.style.left = '50%';
         panel.style.transform = 'translateX(-50%)';
-        panel.style.backgroundColor = '#333333';
-        panel.style.padding = '20px';
-        panel.style.borderRadius = '8px';
-        panel.style.boxShadow = '0 0 10px rgba(0,0,0,0.5)';
         panel.style.zIndex = '1000';
-        
-        // Добавляем заголовок
-        const title = document.createElement('b');
-        title.textContent = isCenter ? 'Редактирование варианта' : 'Редактирование аргумента';
-        title.style.display = 'block';
-        title.style.marginBottom = '10px';
-        title.style.color = '#ffffff';
-        panel.appendChild(title);
         
         // Создаем текстовое поле
         const textarea = document.createElement('textarea');
         textarea.value = node.label;
         textarea.style.width = '300px';
         textarea.style.height = '100px';
-        textarea.style.marginBottom = '10px';
         textarea.style.padding = '8px';
         textarea.style.backgroundColor = '#222222';
         textarea.style.color = '#ffffff';
         textarea.style.border = '1px solid #666666';
         textarea.style.borderRadius = '4px';
         textarea.style.resize = 'none';
+        textarea.style.fontSize = '16px';
+        textarea.style.fontFamily = 'Arial, sans-serif';
+        textarea.style.outline = 'none';
         panel.appendChild(textarea);
         
         // Добавляем панель на страницу
         document.body.appendChild(panel);
         
-        // Фокусируемся на текстовом поле
+        // Фокусируемся на текстовом поле и выделяем весь текст
         textarea.focus();
+        textarea.select();
         
         // Обработчики событий
         const closePanel = () => {
