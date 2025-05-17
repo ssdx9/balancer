@@ -695,6 +695,12 @@ class BuoyancySimulation {
     }
 
     startTextEditing(node) {
+        // Проверяем, не открыта ли уже панель редактирования
+        const existingPanel = document.querySelector('div[style*="position: absolute"][style*="z-index: 1000"]');
+        if (existingPanel) {
+            document.body.removeChild(existingPanel);
+        }
+
         const isCenter = this.centers.includes(node);
         const container = isCenter ? this.centersContainer : this.nodesContainer;
         
@@ -732,34 +738,6 @@ class BuoyancySimulation {
         textarea.style.resize = 'none';
         panel.appendChild(textarea);
         
-        // Создаем кнопки
-        const buttonContainer = document.createElement('div');
-        buttonContainer.style.display = 'flex';
-        buttonContainer.style.justifyContent = 'flex-end';
-        buttonContainer.style.gap = '10px';
-        
-        const saveButton = document.createElement('button');
-        saveButton.textContent = 'Сохранить';
-        saveButton.style.padding = '8px 16px';
-        saveButton.style.backgroundColor = '#4CAF50';
-        saveButton.style.color = '#ffffff';
-        saveButton.style.border = 'none';
-        saveButton.style.borderRadius = '4px';
-        saveButton.style.cursor = 'pointer';
-        
-        const cancelButton = document.createElement('button');
-        cancelButton.textContent = 'Отмена';
-        cancelButton.style.padding = '8px 16px';
-        cancelButton.style.backgroundColor = '#666666';
-        cancelButton.style.color = '#ffffff';
-        cancelButton.style.border = 'none';
-        cancelButton.style.borderRadius = '4px';
-        cancelButton.style.cursor = 'pointer';
-        
-        buttonContainer.appendChild(cancelButton);
-        buttonContainer.appendChild(saveButton);
-        panel.appendChild(buttonContainer);
-        
         // Добавляем панель на страницу
         document.body.appendChild(panel);
         
@@ -768,29 +746,31 @@ class BuoyancySimulation {
         
         // Обработчики событий
         const closePanel = () => {
-            document.body.removeChild(panel);
-        };
-        
-        saveButton.onclick = () => {
-            const newLabel = textarea.value.trim();
-            if (newLabel) {
-                node.label = newLabel;
-                this.updateNode(node.sprite, this.getColor(node.coef, isCenter), newLabel, node.coef);
-                if (isCenter) {
-                    this.updateCentersPositions();
+            if (panel.parentNode === document.body) {
+                const newLabel = textarea.value.trim();
+                if (newLabel) {
+                    node.label = newLabel;
+                    this.updateNode(node.sprite, this.getColor(node.coef, isCenter), newLabel, node.coef);
+                    if (isCenter) {
+                        this.updateCentersPositions();
+                    }
                 }
+                document.body.removeChild(panel);
             }
-            closePanel();
         };
-        
-        cancelButton.onclick = closePanel;
         
         // Закрываем панель при клике вне её
-        document.addEventListener('click', (e) => {
+        const clickOutsideHandler = (e) => {
             if (!panel.contains(e.target)) {
                 closePanel();
+                document.removeEventListener('click', clickOutsideHandler);
             }
-        });
+        };
+        
+        // Добавляем небольшую задержку перед добавлением обработчика клика
+        setTimeout(() => {
+            document.addEventListener('click', clickOutsideHandler);
+        }, 100);
         
         // Предотвращаем закрытие при клике на панель
         panel.onclick = (e) => {
