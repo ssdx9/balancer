@@ -42,6 +42,18 @@ class MemoryProfiler {
 }
 
 class BuoyancySimulation {
+    updateCentersPositions() {
+        const spacing = this.app.screen.width / (this.centers.length + 1);
+        this.centers.forEach((center, index) => {
+            center.x = spacing * (index + 1);
+            center.y = this.app.screen.height / 2;
+            if (center.sprite) {
+                center.sprite.x = center.x;
+                center.sprite.y = center.y;
+            }
+        });
+    }
+
     constructor() {
         this.profiler = new MemoryProfiler();
         this.showMemoryReport = false; // Отключаем отчет о памяти
@@ -1023,18 +1035,6 @@ class BuoyancySimulation {
         
         document.body.appendChild(deleteCenterButton);
         this.deleteCenterButton = deleteCenterButton;
-    }
-
-    updateCentersPositions() {
-        const spacing = this.app.screen.width / (this.centers.length + 1);
-        this.centers.forEach((center, index) => {
-            center.x = spacing * (index + 1);
-            center.y = this.app.screen.height / 2;
-            if (center.sprite) {
-                center.sprite.x = center.x;
-                center.sprite.y = center.y;
-            }
-        });
     }
 
     saveToJson() {
