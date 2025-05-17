@@ -560,6 +560,19 @@ class BuoyancySimulation {
                 this.isCtrlPressed = false;
             }
         });
+
+        // Добавляем обработчики также на уровне document
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Control') {
+                this.isCtrlPressed = true;
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'Control') {
+                this.isCtrlPressed = false;
+            }
+        });
         
         this.app.stage.on('pointerdown', (e) => {
             const pos = e.getLocalPosition(this.mainContainer);
