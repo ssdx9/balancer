@@ -76,6 +76,12 @@ class BuoyancySimulation {
         this.handleResize = () => {
             this.app.renderer.resize(window.innerWidth, window.innerHeight);
             this.updateCentersPositions();
+            if (this.agendaText) {
+                this.agendaText.x = this.app.screen.width / 2;
+                this.agendaText.style.fontSize = Math.min(72, window.innerHeight * 0.1);
+                this.agendaText.style.wordWrapWidth = window.innerWidth * 0.8;
+                this.agendaText.y = Math.min(100, window.innerHeight * 0.15);
+            }
         };
         window.addEventListener('resize', this.handleResize);
 
@@ -139,7 +145,7 @@ class BuoyancySimulation {
                 coef: 0,
                 vx: 0,
                 vy: 0,
-                label: 'Делать',
+                label: 'Один \nвариант',
                 nodes: []
             },
             {
@@ -148,7 +154,7 @@ class BuoyancySimulation {
                 coef: 0,
                 vx: 0,
                 vy: 0,
-                label: 'Не делать',
+                label: 'Другой \nвариант',
                 nodes: []
             }
         ];
@@ -1488,6 +1494,53 @@ class BuoyancySimulation {
         return button;
     }
 
+    createAgendaText() {
+        // Создаем контейнер для текста повестки
+        this.agendaContainer = new PIXI.Container();
+        this.agendaText = new PIXI.Text('Повестка', {
+            fontFamily: 'Arial',
+            fontSize: Math.min(72, window.innerHeight * 0.1),
+            fill: 0x333333,
+            align: 'center',
+            wordWrap: true,
+            wordWrapWidth: window.innerWidth * 0.8
+        });
+        this.agendaText.anchor.set(0.5);
+        this.agendaText.x = this.app.screen.width / 2;
+        this.agendaText.y = Math.min(100, window.innerHeight * 0.15);
+        this.agendaContainer.addChild(this.agendaText);
+        
+        // Добавляем контейнер повестки первым, чтобы он был на заднем плане
+        this.app.stage.addChildAt(this.agendaContainer, 0);
+    }
+
+    updateAgendaText(newText) {
+        if (this.agendaText) {
+            // Сохраняем текущие стили
+            const currentStyle = this.agendaText.style;
+            
+            // Создаем новый текст с обновленным содержимым
+            const newAgendaText = new PIXI.Text(newText, {
+                fontFamily: currentStyle.fontFamily,
+                fontSize: currentStyle.fontSize,
+                fill: currentStyle.fill,
+                align: currentStyle.align,
+                wordWrap: currentStyle.wordWrap,
+                wordWrapWidth: currentStyle.wordWrapWidth
+            });
+            
+            // Копируем свойства из старого текста
+            newAgendaText.anchor.set(0.5);
+            newAgendaText.x = this.agendaText.x;
+            newAgendaText.y = this.agendaText.y;
+            
+            // Заменяем старый текст новым в контейнере
+            this.agendaContainer.removeChild(this.agendaText);
+            this.agendaContainer.addChild(newAgendaText);
+            this.agendaText = newAgendaText;
+        }
+    }
+
     createAddCenterButton() {
         const saveButton = document.createElement('button');
         saveButton.textContent = 'Сохранить';
@@ -1528,13 +1581,13 @@ class BuoyancySimulation {
                         })),
                         x: aspect.x,
                         y: aspect.y
-                    }))
+                    })),
+                    agenda: this.agendaText ? this.agendaText.text : 'Повестка'
                 };
 
                 const jsonString = JSON.stringify(projectData, null, 2);
                 const blob = new Blob([jsonString], { type: 'application/json' });
 
-                // Используем File System Access API
                 if ('showSaveFilePicker' in window) {
                     const handle = await window.showSaveFilePicker({
                         suggestedName: 'buoyancy_project.json',
@@ -1549,7 +1602,6 @@ class BuoyancySimulation {
                     await writable.write(blob);
                     await writable.close();
                 } else {
-                    // Fallback для браузеров, не поддерживающих File System Access API
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
@@ -1606,11 +1658,105 @@ class BuoyancySimulation {
         };
         document.body.appendChild(loadButton);
 
+        const agendaButton = document.createElement('button');
+        agendaButton.textContent = 'Повестка';
+        agendaButton.style.position = 'absolute';
+        agendaButton.style.top = '10px';
+        agendaButton.style.left = (saveButton.offsetWidth + loadButton.offsetWidth + 40) + 'px';
+        agendaButton.style.padding = '8px 16px';
+        agendaButton.style.backgroundColor = '#333333';
+        agendaButton.style.color = '#cccccc';
+        agendaButton.style.border = '1px solid #666666';
+        agendaButton.style.borderRadius = '4px';
+        agendaButton.style.cursor = 'pointer';
+        
+        agendaButton.onclick = () => {
+            const textInput = document.createElement('textarea');
+            textInput.value = this.agendaText.text;
+            textInput.style.position = 'absolute';
+            textInput.style.backgroundColor = 'transparent';
+            textInput.style.border = 'none';
+            textInput.style.outline = 'none';
+            textInput.style.color = '#ffffff';
+            textInput.style.fontSize = Math.min(72, window.innerHeight * 0.1) + 'px';
+            textInput.style.fontWeight = 'bold';
+            textInput.style.textAlign = 'center';
+            textInput.style.width = Math.min(window.innerWidth * 0.8, 1200) + 'px'; // Ограничиваем максимальную ширину
+            textInput.style.height = 'auto';
+            textInput.style.minHeight = Math.min(window.innerHeight * 0.2, 100) + 'px';
+            textInput.style.maxHeight = '50vh'; // 50% от высоты viewport
+            textInput.style.resize = 'none';
+            textInput.style.overflow = 'auto';
+            textInput.style.padding = '20px';
+            textInput.style.margin = '0';
+            textInput.style.fontFamily = 'Arial, sans-serif';
+            textInput.style.zIndex = '1000';
+            textInput.style.left = '50%';
+            textInput.style.transform = 'translateX(-50%)'; // Центрирование по горизонтали
+            textInput.style.top = Math.min(window.innerHeight * 0.1, 50) + 'px';
+            
+            // Добавляем контейнер для текстового поля
+            const container = document.createElement('div');
+            container.style.position = 'fixed';
+            container.style.top = '0';
+            container.style.left = '0';
+            container.style.width = '100%';
+            container.style.height = '100%';
+            container.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+            container.style.zIndex = '999';
+            container.style.display = 'flex';
+            container.style.alignItems = 'flex-start';
+            container.style.justifyContent = 'center';
+            container.style.paddingTop = Math.min(window.innerHeight * 0.1, 50) + 'px';
+            container.style.overflow = 'auto';
+            
+            container.appendChild(textInput);
+            document.body.appendChild(container);
+            
+            textInput.focus();
+            textInput.select();
+            
+            let isEditingFinished = false;
+            
+            const finishEditing = () => {
+                if (isEditingFinished) return;
+                isEditingFinished = true;
+                
+                const newText = textInput.value.trim() || 'Повестка';
+                this.updateAgendaText(newText);
+                
+                if (container.parentNode === document.body) {
+                    document.body.removeChild(container);
+                }
+            };
+            
+            textInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    finishEditing();
+                }
+            });
+            
+            container.addEventListener('click', (e) => {
+                if (e.target === container) {
+                    finishEditing();
+                }
+            });
+            
+            textInput.addEventListener('blur', finishEditing);
+            
+            textInput.onclick = (e) => {
+                e.stopPropagation();
+            };
+        };
+        
+        document.body.appendChild(agendaButton);
+
         const addCenterButton = document.createElement('button');
         addCenterButton.textContent = 'Добавить вариант';
         addCenterButton.style.position = 'absolute';
         addCenterButton.style.top = '10px';
-        addCenterButton.style.left = (saveButton.offsetWidth + loadButton.offsetWidth + 40) + 'px';
+        addCenterButton.style.left = (saveButton.offsetWidth + loadButton.offsetWidth + agendaButton.offsetWidth + 60) + 'px';
         addCenterButton.style.padding = '8px 16px';
         addCenterButton.style.backgroundColor = '#333333';
         addCenterButton.style.color = '#cccccc';
@@ -1645,7 +1791,7 @@ class BuoyancySimulation {
         deleteCenterButton.textContent = 'Удалить вариант';
         deleteCenterButton.style.position = 'absolute';
         deleteCenterButton.style.top = '10px';
-        deleteCenterButton.style.left = (saveButton.offsetWidth + loadButton.offsetWidth + addCenterButton.offsetWidth + 60) + 'px';
+        deleteCenterButton.style.left = (saveButton.offsetWidth + loadButton.offsetWidth + agendaButton.offsetWidth + addCenterButton.offsetWidth + 80) + 'px';
         deleteCenterButton.style.padding = '8px 16px';
         deleteCenterButton.style.backgroundColor = '#333333';
         deleteCenterButton.style.color = '#cccccc';
@@ -1677,6 +1823,9 @@ class BuoyancySimulation {
         
         document.body.appendChild(deleteCenterButton);
         this.deleteCenterButton = deleteCenterButton;
+        
+        // Создаем текст повестки при инициализации
+        this.createAgendaText();
     }
 
     saveToJson() {
@@ -1704,7 +1853,8 @@ class BuoyancySimulation {
                 })),
                 x: aspect.x,
                 y: aspect.y
-            }))
+            })),
+            agenda: this.agendaText ? this.agendaText.text : 'Повестка'
         };
 
         const jsonString = JSON.stringify(projectData, null, 2);
@@ -1849,6 +1999,13 @@ class BuoyancySimulation {
                     node.sprite.graphics.drawRoundedRect(-node.sprite.width/2, -node.sprite.height/2, node.sprite.width, node.sprite.height, 10);
                 });
             }
+        }
+
+        // Восстанавливаем повестку, если она есть в данных
+        if (projectData.agenda) {
+            this.updateAgendaText(projectData.agenda);
+        } else {
+            this.updateAgendaText('Повестка');
         }
         
         this.updateSelection();
