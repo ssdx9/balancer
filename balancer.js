@@ -866,16 +866,19 @@ class BuoyancySimulation {
                 return;
             }
             
-            if (e.key === 'Delete' && this.selectedNode && !this.centers.includes(this.selectedNode)) {
-                const center = this.nodeCenters.get(this.selectedNode);
-                const index = center.nodes.indexOf(this.selectedNode);
-                if (index !== -1) {
-                    this.nodesContainer.removeChild(this.selectedNode.sprite);
-                    this.linksContainer.removeChild(this.selectedNode.link);
-                    center.nodes.splice(index, 1);
-                    this.selectedNode = null;
-                    this.updateSelection();
+            if (e.key === 'Delete' && this.selectedNodes.size > 0) {
+                const nodesToDelete = Array.from(this.selectedNodes).filter(node => !this.centers.includes(node));
+                for (const node of nodesToDelete) {
+                    const center = this.nodeCenters.get(node);
+                    const index = center.nodes.indexOf(node);
+                    if (index !== -1) {
+                        this.nodesContainer.removeChild(node.sprite);
+                        this.linksContainer.removeChild(node.link);
+                        center.nodes.splice(index, 1);
+                    }
                 }
+                this.selectedNodes.clear();
+                this.updateSelection();
             }
 
             if (this.selectedNode) {
