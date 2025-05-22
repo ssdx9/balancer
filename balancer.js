@@ -540,7 +540,7 @@ class BuoyancySimulation {
         
         const background = new PIXI.Graphics();
         background.beginFill(0x333333);
-        background.drawRoundedRect(-30, -20, 60, 40, 10);
+        background.drawRoundedRect(-30, -15, 60, 30, 4);
         background.endFill();
         
         const text = this.getText(coef.toString());
@@ -1248,8 +1248,8 @@ class BuoyancySimulation {
                     
                     // Добавляем индикатор коэффициента для центра
                     const coefIndicator = this.createCoefIndicator(selectedNode.coef);
-                    coefIndicator.x = this.app.screen.width - 100;
-                    coefIndicator.y = 50;
+                    coefIndicator.x = this.app.screen.width - 40;
+                    coefIndicator.y = 40;
                     coefIndicator.coefIndicator = true;
                     this.nodesContainer.addChild(coefIndicator);
                 } else {
@@ -1267,12 +1267,12 @@ class BuoyancySimulation {
                     if (!isPartOfAspect) {
                         // Обработка выделенного аргумента
                         const coefIndicator = this.createCoefIndicator(selectedNode.coef);
-                        coefIndicator.x = this.app.screen.width - 100;
-                        coefIndicator.y = 50;
+                        coefIndicator.x = this.app.screen.width - 40;
+                        coefIndicator.y = 40;
                         coefIndicator.coefIndicator = true;
                         this.nodesContainer.addChild(coefIndicator);
 
-                        const plusBtn = this.createSmallStyledButton('За', this.app.screen.width - 180, 50, () => {
+                        const plusBtn = this.createSmallStyledButton('За', this.app.screen.width - 140, 40, () => {
                             selectedNode.coef = Math.min(5, selectedNode.coef + 1);
                             this.updateNode(selectedNode.sprite, this.getColor(selectedNode.coef, false), selectedNode.label, selectedNode.coef);
                             selectedNode.sprite.graphics.lineStyle(3, 0xffffff, 1);
@@ -1283,13 +1283,13 @@ class BuoyancySimulation {
                                 this.nodesContainer.removeChild(existingCoefIndicator);
                             }
                             const newCoefIndicator = this.createCoefIndicator(selectedNode.coef);
-                            newCoefIndicator.x = this.app.screen.width - 100;
-                            newCoefIndicator.y = 50;
+                            newCoefIndicator.x = this.app.screen.width - 40;
+                            newCoefIndicator.y = 40;
                             newCoefIndicator.coefIndicator = true;
                             this.nodesContainer.addChild(newCoefIndicator);
                         });
 
-                        const minusBtn = this.createSmallStyledButton('Против', this.app.screen.width - 300, 50, () => {
+                        const minusBtn = this.createSmallStyledButton('Против', this.app.screen.width - 240, 40, () => {
                             selectedNode.coef = Math.max(-5, selectedNode.coef - 1);
                             this.updateNode(selectedNode.sprite, this.getColor(selectedNode.coef, false), selectedNode.label, selectedNode.coef);
                             selectedNode.sprite.graphics.lineStyle(3, 0xffffff, 1);
@@ -1300,8 +1300,8 @@ class BuoyancySimulation {
                                 this.nodesContainer.removeChild(existingCoefIndicator);
                             }
                             const newCoefIndicator = this.createCoefIndicator(selectedNode.coef);
-                            newCoefIndicator.x = this.app.screen.width - 100;
-                            newCoefIndicator.y = 50;
+                            newCoefIndicator.x = this.app.screen.width - 40;
+                            newCoefIndicator.y = 40;
                             newCoefIndicator.coefIndicator = true;
                             this.nodesContainer.addChild(newCoefIndicator);
                         });
@@ -1309,7 +1309,7 @@ class BuoyancySimulation {
                         this.nodesContainer.addChild(plusBtn, minusBtn);
                     } else {
                         // Добавляем кнопку разъединения аспекта
-                        const splitButton = this.createStyledButton('Разъединить аспект', this.app.screen.width - 300, 50, () => {
+                        const splitButton = this.createStyledButton('Разъединить аспект', this.app.screen.width - 180, 40, () => {
                             this.splitAspect(aspectId);
                             this.updateSelection();
                         });
@@ -1319,8 +1319,8 @@ class BuoyancySimulation {
                         const aspect = this.aspects.get(aspectId);
                         const aspectCoef = aspect.nodes.reduce((sum, node) => sum + node.coef, 0);
                         const coefIndicator = this.createCoefIndicator(aspectCoef);
-                        coefIndicator.x = this.app.screen.width - 100;
-                        coefIndicator.y = 50;
+                        coefIndicator.x = this.app.screen.width - 40;
+                        coefIndicator.y = 40;
                         coefIndicator.coefIndicator = true;
                         this.nodesContainer.addChild(coefIndicator);
                     }
@@ -1332,7 +1332,7 @@ class BuoyancySimulation {
                 if (allAreArguments) {
                     if (commonAspectId !== null) {
                         // Если все выделенные узлы принадлежат одному аспекту, показываем кнопку разъединения
-                        const splitButton = this.createStyledButton('Разъединить аспект', this.app.screen.width - 300, 50, () => {
+                        const splitButton = this.createStyledButton('Разъединить аспект', this.app.screen.width - 180, 40, () => {
                             this.splitAspect(commonAspectId);
                             this.updateSelection();
                         });
@@ -1342,8 +1342,8 @@ class BuoyancySimulation {
                         const aspect = this.aspects.get(commonAspectId);
                         const aspectCoef = aspect.nodes.reduce((sum, node) => sum + node.coef, 0);
                         const coefIndicator = this.createCoefIndicator(aspectCoef);
-                        coefIndicator.x = this.app.screen.width - 100;
-                        coefIndicator.y = 50;
+                        coefIndicator.x = this.app.screen.width - 40;
+                        coefIndicator.y = 40;
                         coefIndicator.coefIndicator = true;
                         this.nodesContainer.addChild(coefIndicator);
                     } else {
@@ -1359,7 +1359,7 @@ class BuoyancySimulation {
                         
                         if (allAreNotInAspect) {
                             // Добавляем кнопку объединения в аспект
-                            const mergeButton = this.createStyledButton('Объединить в аспект', this.app.screen.width - 300, 50, () => {
+                            const mergeButton = this.createStyledButton('Объединить в аспект', this.app.screen.width - 180, 40, () => {
                                 const aspect = this.createAspect(Array.from(this.selectedNodes));
                                 this.updateSelection();
                             });
@@ -1392,7 +1392,7 @@ class BuoyancySimulation {
         const graphics = new PIXI.Graphics();
         graphics.beginFill(0x222222);
         graphics.lineStyle(1, 0x666666);
-        graphics.drawRoundedRect(-50, -15, 100, 30, 4);
+        graphics.drawRoundedRect(-40, -15, 80, 30, 4);
         graphics.endFill();
         
         const textSprite = this.getText(text);
@@ -1408,7 +1408,7 @@ class BuoyancySimulation {
             graphics.clear();
             graphics.beginFill(0x333333);
             graphics.lineStyle(1, 0x666666);
-            graphics.drawRoundedRect(-50, -15, 100, 30, 4);
+            graphics.drawRoundedRect(-40, -15, 80, 30, 4);
             graphics.endFill();
         });
         
@@ -1416,7 +1416,7 @@ class BuoyancySimulation {
             graphics.clear();
             graphics.beginFill(0x222222);
             graphics.lineStyle(1, 0x666666);
-            graphics.drawRoundedRect(-50, -15, 100, 30, 4);
+            graphics.drawRoundedRect(-40, -15, 80, 30, 4);
             graphics.endFill();
         });
         
@@ -1432,7 +1432,7 @@ class BuoyancySimulation {
         node.controlButtons = [];
         
         if (this.centers.includes(node)) {
-            const addArgBtn = this.createStyledButton('Добавить аргумент', this.app.screen.width - 300, 50, () => {
+            const addArgBtn = this.createStyledButton('Добавить аргумент', this.app.screen.width - 180, 40, () => {
                 const angle = Math.random() * Math.PI * 2;
                 const newNode = {
                     label: `Аргумент ${node.nodes.length + 1}`,
@@ -1475,7 +1475,7 @@ class BuoyancySimulation {
         const graphics = new PIXI.Graphics();
         graphics.beginFill(0x222222);
         graphics.lineStyle(1, 0x666666);
-        graphics.drawRoundedRect(-100, -15, 200, 30, 4);
+        graphics.drawRoundedRect(-80, -15, 160, 30, 4);
         graphics.endFill();
         
         const textSprite = this.getText(text);
@@ -1491,7 +1491,7 @@ class BuoyancySimulation {
             graphics.clear();
             graphics.beginFill(0x333333);
             graphics.lineStyle(1, 0x666666);
-            graphics.drawRoundedRect(-100, -15, 200, 30, 4);
+            graphics.drawRoundedRect(-80, -15, 160, 30, 4);
             graphics.endFill();
         });
         
@@ -1499,7 +1499,7 @@ class BuoyancySimulation {
             graphics.clear();
             graphics.beginFill(0x222222);
             graphics.lineStyle(1, 0x666666);
-            graphics.drawRoundedRect(-100, -15, 200, 30, 4);
+            graphics.drawRoundedRect(-80, -15, 160, 30, 4);
             graphics.endFill();
         });
         
@@ -1570,7 +1570,9 @@ class BuoyancySimulation {
         saveButton.style.border = '1px solid #666666';
         saveButton.style.borderRadius = '4px';
         saveButton.style.cursor = 'pointer';
-        saveButton.style.marginRight = '10px';
+        saveButton.style.marginBottom = '10px';
+        saveButton.style.display = 'block';
+        saveButton.style.width = '120px';
         
         saveButton.onclick = async () => {
             try {
@@ -1639,14 +1641,15 @@ class BuoyancySimulation {
         const loadButton = document.createElement('button');
         loadButton.textContent = 'Загрузить';
         loadButton.style.position = 'absolute';
-        loadButton.style.top = '10px';
-        loadButton.style.left = (saveButton.offsetWidth + 20) + 'px';
+        loadButton.style.top = '58px'; // 10px + 48px (высота кнопки + margin)
+        loadButton.style.left = '10px';
         loadButton.style.padding = '8px 16px';
         loadButton.style.backgroundColor = '#222222';
         loadButton.style.color = '#cccccc';
         loadButton.style.border = '1px solid #666666';
         loadButton.style.borderRadius = '4px';
         loadButton.style.cursor = 'pointer';
+        loadButton.style.width = '120px';
         
         loadButton.onclick = () => {
             const input = document.createElement('input');
@@ -1678,14 +1681,15 @@ class BuoyancySimulation {
         const agendaButton = document.createElement('button');
         agendaButton.textContent = 'Повестка';
         agendaButton.style.position = 'absolute';
-        agendaButton.style.top = '10px';
-        agendaButton.style.left = (saveButton.offsetWidth + loadButton.offsetWidth + 40) + 'px';
+        agendaButton.style.top = '106px'; // 58px + 48px
+        agendaButton.style.left = '10px';
         agendaButton.style.padding = '8px 16px';
         agendaButton.style.backgroundColor = '#333333';
         agendaButton.style.color = '#cccccc';
         agendaButton.style.border = '1px solid #666666';
         agendaButton.style.borderRadius = '4px';
         agendaButton.style.cursor = 'pointer';
+        agendaButton.style.width = '120px';
         
         agendaButton.onclick = () => {
             const textInput = document.createElement('textarea');
@@ -1773,13 +1777,14 @@ class BuoyancySimulation {
         addCenterButton.textContent = 'Добавить вариант';
         addCenterButton.style.position = 'absolute';
         addCenterButton.style.top = '10px';
-        addCenterButton.style.left = (saveButton.offsetWidth + loadButton.offsetWidth + agendaButton.offsetWidth + 60) + 'px';
+        addCenterButton.style.left = '150px'; // 10px + 120px + 20px (отступ)
         addCenterButton.style.padding = '8px 16px';
         addCenterButton.style.backgroundColor = '#333333';
         addCenterButton.style.color = '#cccccc';
         addCenterButton.style.border = '1px solid #666666';
         addCenterButton.style.borderRadius = '4px';
         addCenterButton.style.cursor = 'pointer';
+        addCenterButton.style.width = '120px';
         
         addCenterButton.onclick = () => {
             const newCenter = {
@@ -1807,8 +1812,8 @@ class BuoyancySimulation {
         const deleteCenterButton = document.createElement('button');
         deleteCenterButton.textContent = 'Удалить вариант';
         deleteCenterButton.style.position = 'absolute';
-        deleteCenterButton.style.top = '10px';
-        deleteCenterButton.style.left = (saveButton.offsetWidth + loadButton.offsetWidth + agendaButton.offsetWidth + addCenterButton.offsetWidth + 80) + 'px';
+        deleteCenterButton.style.top = '58px'; // 10px + 48px
+        deleteCenterButton.style.left = '150px'; // 10px + 120px + 20px
         deleteCenterButton.style.padding = '8px 16px';
         deleteCenterButton.style.backgroundColor = '#333333';
         deleteCenterButton.style.color = '#cccccc';
@@ -1816,6 +1821,7 @@ class BuoyancySimulation {
         deleteCenterButton.style.borderRadius = '4px';
         deleteCenterButton.style.cursor = 'pointer';
         deleteCenterButton.style.display = 'none';
+        deleteCenterButton.style.width = '120px';
         
         deleteCenterButton.onclick = () => {
             const selectedCenters = Array.from(this.selectedNodes).filter(node => this.centers.includes(node));
