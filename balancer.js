@@ -1275,6 +1275,8 @@ class BuoyancySimulation {
                         const plusBtn = this.createSmallStyledButton('За', this.app.screen.width - 140, 40, () => {
                             selectedNode.coef = Math.min(5, selectedNode.coef + 1);
                             this.updateNode(selectedNode.sprite, this.getColor(selectedNode.coef, false), selectedNode.label, selectedNode.coef);
+                            selectedNode.sprite.graphics.clear();
+                            this.layoutNode(selectedNode.sprite, this.getColor(selectedNode.coef, false), selectedNode.label, selectedNode.coef);
                             selectedNode.sprite.graphics.lineStyle(3, 0xffffff, 1);
                             selectedNode.sprite.graphics.drawRoundedRect(-selectedNode.sprite.width/2, -selectedNode.sprite.height/2, selectedNode.sprite.width, selectedNode.sprite.height, 10);
                             
@@ -1292,6 +1294,8 @@ class BuoyancySimulation {
                         const minusBtn = this.createSmallStyledButton('Против', this.app.screen.width - 240, 40, () => {
                             selectedNode.coef = Math.max(-5, selectedNode.coef - 1);
                             this.updateNode(selectedNode.sprite, this.getColor(selectedNode.coef, false), selectedNode.label, selectedNode.coef);
+                            selectedNode.sprite.graphics.clear();
+                            this.layoutNode(selectedNode.sprite, this.getColor(selectedNode.coef, false), selectedNode.label, selectedNode.coef);
                             selectedNode.sprite.graphics.lineStyle(3, 0xffffff, 1);
                             selectedNode.sprite.graphics.drawRoundedRect(-selectedNode.sprite.width/2, -selectedNode.sprite.height/2, selectedNode.sprite.width, selectedNode.sprite.height, 10);
                             
